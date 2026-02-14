@@ -110,6 +110,7 @@ export default function FileBrowser() {
     const [isSelecting, setIsSelecting] = useState(false);
     const [isSidebarOpen, setSidebarOpen] = useState(true);
     const [isDragging, setIsDragging] = useState(false);
+    const [lastSelectedId, setLastSelectedId] = useState<number | null>(null);
     const selectionStart = useRef({ x: 0, y: 0 });
 
     // handle refresh
@@ -198,6 +199,41 @@ export default function FileBrowser() {
         await updateFileMutation.mutateAsync({ id: renameFile.id, file_name: newName });
         setRenameFile(null);
     }, [renameFile, updateFileMutation, setRenameFile]);
+
+    // Handle file selection with range support
+    const handleFileSelect = useCallback((fileId: number, multi: boolean | undefined, shiftKey: boolean | undefined) => {
+        const hasShiftKey = !!shiftKey;
+        const hasMulti = !!multi;
+        
+        if (hasShiftKey && lastSelectedId !== null) {
+            // Range selection
+            const allFiles = displayFiles || [];
+            const startIndex = allFiles.findIndex(f => f.id === lastSelectedId);
+            const endIndex = allFiles.findIndex(f => f.id === fileId);
+            
+            if (startIndex !== -1 && endIndex !== -1) {
+                const start = Math.min(startIndex, endIndex);
+                const end = Math.max(startIndex, endIndex);
+                const rangeIds = allFiles.slice(start, end + 1).map(f => f.id);
+                
+                // Add range to current selection
+                const newSet = new Set(selectedFileIds);
+                rangeIds.forEach(id => newSet.add(id));
+                selectAll(Array.from(newSet), Array.from(selectedFolderIds));
+                setLastSelectedId(fileId);
+                return;
+            }
+        }
+        
+        // Normal selection
+        if (hasMulti) {
+            selectFile(fileId, true);
+        } else {
+            selectFile(fileId, false);
+        }
+        
+        setLastSelectedId(fileId);
+    }, [displayFiles, selectedFileIds, selectedFolderIds, selectAll, selectFile, lastSelectedId]);
 
     // Handle folder rename
     const handleRenameFolder = useCallback(async (newName: string) => {
@@ -459,6 +495,40 @@ export default function FileBrowser() {
             // Backspace - go to parent folder
             if (e.key === 'Backspace' && breadcrumbs.length > 1) {
                 navigateToBreadcrumb(breadcrumbs.length - 2);
+            }
+
+            // Arrow keys with Shift - range selection
+            if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+                e.preventDefault();
+                if (!displayFiles || displayFiles.length === 0) return;
+
+                const currentSelected = Array.from(selectedFileIds);
+                if (currentSelected.length === 0) return;
+
+                const lastSelectedId = currentSelected[currentSelected.length - 1];
+                const currentIndex = displayFiles.findIndex(f => f.id === lastSelectedId);
+                
+                if (currentIndex === -1) return;
+
+                let newIndex = currentIndex;
+                if (e.key === 'ArrowUp') {
+                    newIndex = Math.max(0, currentIndex - 1);
+                } else if (e.key === 'ArrowDown') {
+                    newIndex = Math.min(displayFiles.length - 1, currentIndex + 1);
+                }
+
+                const newFileId = displayFiles[newIndex].id;
+                
+                // Range selection
+                const start = Math.min(currentIndex, newIndex);
+                const end = Math.max(currentIndex, newIndex);
+                const rangeIds = displayFiles.slice(start, end + 1).map(f => f.id);
+                
+                // Add range to current selection
+                const newSet = new Set(selectedFileIds);
+                rangeIds.forEach(id => newSet.add(id));
+                selectAll(Array.from(newSet), Array.from(selectedFolderIds));
+                setLastSelectedId(newFileId);
             }
 
             // Ctrl+C - Copy
@@ -733,7 +803,7 @@ export default function FileBrowser() {
                                             file={file}
                                             viewMode={viewMode}
                                             selected={selectedFileIds.has(file.id)}
-                                            onSelect={(multi) => selectFile(file.id, multi)}
+                                            onSelect={(multi, shiftKey) => handleFileSelect(file.id, multi, shiftKey)}
                                             onPlay={() => handleFileOpen(file)}
                                             onDragStart={handleDragStart}
                                         />

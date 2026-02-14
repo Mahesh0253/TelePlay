@@ -16,7 +16,7 @@ interface AppState {
     // Selection
     selectedFileIds: Set<number>;
     selectedFolderIds: Set<number>;
-    selectFile: (id: number, multi?: boolean) => void;
+    selectFile: (id: number, multi?: boolean, shiftKey?: boolean) => void;
     deselectFile: (id: number) => void;
     selectFolder: (id: number, multi?: boolean) => void;
     deselectFolder: (id: number) => void;

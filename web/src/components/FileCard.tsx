@@ -9,7 +9,7 @@ interface FileCardProps {
     file: TelegramFile;
     viewMode: 'grid' | 'list';
     selected: boolean;
-    onSelect: (multi: boolean) => void;
+    onSelect: (multi: boolean, shiftKey?: boolean) => void;
     onPlay: () => void;
     onDragStart?: (file: TelegramFile, e?: React.DragEvent) => void;
 }
@@ -38,7 +38,7 @@ export default function FileCard({
 
     const handleClick = (e: React.MouseEvent) => {
         e.stopPropagation();
-        onSelect(e.ctrlKey || e.metaKey);
+        onSelect(e.ctrlKey || e.metaKey || e.shiftKey);
     };
 
     const handleDoubleClick = (e: React.MouseEvent) => {
