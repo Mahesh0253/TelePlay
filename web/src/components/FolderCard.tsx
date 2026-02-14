@@ -13,9 +13,10 @@ interface FolderCardProps {
     onSelect?: (multi: boolean) => void;
     onOpen: () => void;
     onFileDrop: (fileId: number, folderId: number) => void;
+    onMultipleFileDrop?: (fileIds: number[], folderId: number) => void;
 }
 
-export default function FolderCard({ folder, viewMode, selected, onSelect, onOpen, onFileDrop }: FolderCardProps) {
+export default function FolderCard({ folder, viewMode, selected, onSelect, onOpen, onFileDrop, onMultipleFileDrop }: FolderCardProps) {
     const [isDragOver, setIsDragOver] = useState(false);
     const { activeContextMenu, setActiveContextMenu } = useAppStore();
 
@@ -63,6 +64,10 @@ export default function FolderCard({ folder, viewMode, selected, onSelect, onOpe
             const data = JSON.parse(e.dataTransfer.getData('application/json'));
             if (data.type === 'file' && data.id) {
                 onFileDrop(data.id, folder.id);
+            } else if (data.type === 'multiple_files' && data.files && data.files.length > 0) {
+                // Handle multiple file drop
+                const fileIds = data.files.map((file: any) => file.id);
+                onMultipleFileDrop?.(fileIds, folder.id);
             }
         } catch (err) {
             console.error('Invalid drop data:', err);

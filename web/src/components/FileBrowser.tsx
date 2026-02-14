@@ -128,13 +128,42 @@ export default function FileBrowser() {
     const handleFileDrop = useCallback(async (fileId: number, folderId: number) => {
         await updateFileMutation.mutateAsync({ id: fileId, folder_id: folderId });
         addToast('File moved successfully', 'success');
-    }, [updateFileMutation, addToast]);
+        // Refresh the current view to show updated file locations
+        handleRefresh();
+    }, [updateFileMutation, addToast, handleRefresh]);
+
+    // Handle multiple file drops
+    const handleMultipleFileDrop = useCallback(async (fileIds: number[], folderId: number) => {
+        const promises = fileIds.map(fileId =>
+            updateFileMutation.mutateAsync({ id: fileId, folder_id: folderId })
+        );
+        await Promise.all(promises);
+        addToast(`${fileIds.length} files moved successfully`, 'success');
+        // Refresh the current view to show updated file locations
+        handleRefresh();
+    }, [updateFileMutation, addToast, handleRefresh]);
 
     // Handle drag start
-    const handleDragStart = useCallback((file: TelegramFile) => {
+    const handleDragStart = useCallback((file: TelegramFile, e?: React.DragEvent) => {
         setIsDragging(true);
+        
+        if (e) {
+            // If this file is selected and there are other selected files, drag all selected files
+            if (selectedFileIds.has(file.id) && selectedFileIds.size > 1) {
+                const selectedFiles = displayFiles?.filter(f => selectedFileIds.has(f.id)) || [];
+                const data = {
+                    type: 'multiple_files',
+                    files: selectedFiles.map(f => ({ id: f.id, name: f.file_name }))
+                };
+                e.dataTransfer.setData('application/json', JSON.stringify(data));
+            } else {
+                // Single file drag
+                e.dataTransfer.setData('application/json', JSON.stringify({ type: 'file', id: file.id }));
+            }
+        }
+        
         console.log('Dragging file:', file.file_name);
-    }, [setIsDragging]);
+    }, [selectedFileIds, displayFiles, setIsDragging]);
 
     // Handle file rename
     const handleRenameFile = useCallback(async (newName: string) => {
@@ -666,6 +695,7 @@ export default function FileBrowser() {
                                             onSelect={(multi) => selectFolder(folder.id, multi)}
                                             onOpen={() => navigateToFolder(folder)}
                                             onFileDrop={handleFileDrop}
+                                            onMultipleFileDrop={handleMultipleFileDrop}
                                         />
                                     ))}
                                     

@@ -11,7 +11,7 @@ interface FileCardProps {
     selected: boolean;
     onSelect: (multi: boolean) => void;
     onPlay: () => void;
-    onDragStart?: (file: TelegramFile) => void;
+    onDragStart?: (file: TelegramFile, e?: React.DragEvent) => void;
 }
 
 export default function FileCard({
@@ -50,7 +50,7 @@ export default function FileCard({
     const handleDragStart = (e: React.DragEvent) => {
         e.dataTransfer.setData('application/json', JSON.stringify({ type: 'file', id: file.id }));
         e.dataTransfer.effectAllowed = 'move';
-        onDragStart?.(file);
+        onDragStart?.(file, e);
     };
 
     // Generate authenticated stream URL for thumbnail
