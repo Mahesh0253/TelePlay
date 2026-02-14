@@ -49,6 +49,7 @@ export default function FileBrowser() {
         selectionBox,
         setSelectionBox,
         activeSection,
+        setActiveSection,
         addToast,
         setSelectedFiles
     } = useAppStore();
@@ -74,21 +75,21 @@ export default function FileBrowser() {
         displayFiles = cwFiles?.files;
         isLoading = cwLoading;
     } else {
-        // For files section, accumulate files from all pages
-        useEffect(() => {
-            if (filesList && activeSection === 'files') {
-                setAllFiles(prev => {
-                    const existingIds = new Set(prev.map(f => f.id));
-                    const newFiles = filesList.files.filter(f => !existingIds.has(f.id));
-                    return [...prev, ...newFiles];
-                });
-                setHasMore(filesList.page * filesList.per_page < filesList.total);
-            }
-        }, [filesList, activeSection]);
-
         displayFiles = allFiles;
         isLoading = filesLoading;
     }
+
+    // For files section, accumulate files from all pages
+    useEffect(() => {
+        if (filesList && activeSection === 'files') {
+            setAllFiles(prev => {
+                const existingIds = new Set(prev.map(f => f.id));
+                const newFiles = filesList.files.filter(f => !existingIds.has(f.id));
+                return [...prev, ...newFiles];
+            });
+            setHasMore(filesList.page * filesList.per_page < filesList.total);
+        }
+    }, [filesList, activeSection]);
 
     // Folders only show in 'files' mode
     const { data: folders, isLoading: foldersLoading, refetch: refetchFolders } = useFolders(currentFolderId);
@@ -114,52 +115,70 @@ export default function FileBrowser() {
     const selectionStart = useRef({ x: 0, y: 0 });
 
     // handle refresh
-    const handleRefresh = useCallback(() => {
-        if (activeSection === 'files') {
-            refetchFiles();
-            refetchFolders();
-        } else if (activeSection === 'recent') {
-            refetchRecent();
-        } else if (activeSection === 'continue_watching') {
-            refetchCW();
+    const handleRefresh = useCallback(async () => {
+        try {
+            if (activeSection === 'files') {
+                // Reset pagination and file list for clean refresh
+                setPage(1);
+                setAllFiles([]);
+                await Promise.all([refetchFiles(), refetchFolders()]);
+            } else if (activeSection === 'recent') {
+                await refetchRecent();
+            } else if (activeSection === 'continue_watching') {
+                await refetchCW();
+            }
+            addToast('Refreshed successfully', 'success');
+        } catch (error) {
+            console.error('Refresh failed:', error);
+            addToast('Failed to refresh', 'error');
         }
-    }, [activeSection, refetchFiles, refetchFolders, refetchRecent, refetchCW]);
+    }, [activeSection, refetchFiles, refetchFolders, refetchRecent, refetchCW, setPage, setAllFiles, addToast]);
 
     // Handle drag-drop file to folder
     const handleFileDrop = useCallback(async (fileId: number, folderId: number) => {
         console.log('Moving single file:', fileId, 'to folder:', folderId);
-        await updateFileMutation.mutateAsync({ id: fileId, folder_id: folderId });
-        addToast('File moved successfully', 'success');
-        // Force a complete refresh by resetting the file list
-        setPage(1);
-        setAllFiles([]);
-        // Always refresh files and folders when in files section
-        if (activeSection === 'files') {
-            refetchFiles();
-            refetchFolders();
+        try {
+            await updateFileMutation.mutateAsync({ id: fileId, folder_id: folderId });
+            addToast('File moved successfully', 'success');
+            // Force a complete refresh by resetting the file list
+            setPage(1);
+            setAllFiles([]);
+            // Always refresh files and folders when in files section
+            if (activeSection === 'files') {
+                refetchFiles();
+                refetchFolders();
+            }
+            // Clear selection after move
+            clearSelection();
+        } catch (error) {
+            console.error('Failed to move file:', error);
+            addToast('Failed to move file', 'error');
         }
-        // Clear selection after move
-        clearSelection();
     }, [updateFileMutation, addToast, activeSection, refetchFiles, refetchFolders, setPage, setAllFiles, clearSelection]);
 
     // Handle multiple file drops
     const handleMultipleFileDrop = useCallback(async (fileIds: number[], folderId: number) => {
         console.log('Moving multiple files:', fileIds, 'to folder:', folderId);
-        const promises = fileIds.map(fileId =>
-            updateFileMutation.mutateAsync({ id: fileId, folder_id: folderId })
-        );
-        await Promise.all(promises);
-        addToast(`${fileIds.length} files moved successfully`, 'success');
-        // Force a complete refresh by resetting the file list
-        setPage(1);
-        setAllFiles([]);
-        // Always refresh files and folders when in files section
-        if (activeSection === 'files') {
-            refetchFiles();
-            refetchFolders();
+        try {
+            const promises = fileIds.map(fileId =>
+                updateFileMutation.mutateAsync({ id: fileId, folder_id: folderId })
+            );
+            await Promise.all(promises);
+            addToast(`${fileIds.length} files moved successfully`, 'success');
+            // Force a complete refresh by resetting the file list
+            setPage(1);
+            setAllFiles([]);
+            // Always refresh files and folders when in files section
+            if (activeSection === 'files') {
+                refetchFiles();
+                refetchFolders();
+            }
+            // Clear selection after move
+            clearSelection();
+        } catch (error) {
+            console.error('Failed to move files:', error);
+            addToast('Failed to move some files', 'error');
         }
-        // Clear selection after move
-        clearSelection();
     }, [updateFileMutation, addToast, activeSection, refetchFiles, refetchFolders, setPage, setAllFiles, clearSelection]);
 
     // Handle drag start
@@ -251,16 +270,22 @@ export default function FileBrowser() {
             setCurrentFolderId(folder.id);
             setBreadcrumbs([...breadcrumbs, { id: folder.id, name: folder.name }]);
         }
+        // Reset pagination and file list when navigating
+        setPage(1);
+        setAllFiles([]);
         clearSelection();
-    }, [breadcrumbs, clearSelection, setBreadcrumbs, setCurrentFolderId]);
+    }, [breadcrumbs, clearSelection, setBreadcrumbs, setCurrentFolderId, setPage, setAllFiles]);
 
     // Navigate via breadcrumbs
     const navigateToBreadcrumb = useCallback((index: number) => {
         const target = breadcrumbs[index];
         setCurrentFolderId(target.id);
         setBreadcrumbs(breadcrumbs.slice(0, index + 1));
+        // Reset pagination and file list when navigating via breadcrumbs
+        setPage(1);
+        setAllFiles([]);
         clearSelection();
-    }, [breadcrumbs, clearSelection, setBreadcrumbs, setCurrentFolderId]);
+    }, [breadcrumbs, clearSelection, setBreadcrumbs, setCurrentFolderId, setPage, setAllFiles]);
 
     // Handle delete confirmation
     const handleDeleteConfirm = async () => {
@@ -620,6 +645,17 @@ export default function FileBrowser() {
         setAllFiles([]);
         setHasMore(true);
     }, [currentFolderId, fileTypeFilter, searchQuery, activeSection]);
+
+    // Handle section switching with proper state reset
+    const handleSectionChange = useCallback((section: 'files' | 'recent' | 'continue_watching') => {
+        if (section !== activeSection) {
+            setActiveSection(section);
+            setPage(1);
+            setAllFiles([]);
+            setHasMore(true);
+            clearSelection();
+        }
+    }, [activeSection, setActiveSection, setPage, setAllFiles, setHasMore, clearSelection]);
 
     return (
         <div className="flex h-screen bg-dark-950 text-white selection:bg-primary-500/30 overflow-hidden">
