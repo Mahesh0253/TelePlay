@@ -11,6 +11,7 @@ interface FileCardProps {
     selected: boolean;
     onSelect: (multi: boolean) => void;
     onPlay: () => void;
+    onDragStart?: (file: TelegramFile) => void;
 }
 
 export default function FileCard({
@@ -18,7 +19,8 @@ export default function FileCard({
     viewMode,
     selected,
     onSelect,
-    onPlay
+    onPlay,
+    onDragStart
 }: FileCardProps) {
     const { activeContextMenu, setActiveContextMenu } = useAppStore();
 
@@ -42,6 +44,13 @@ export default function FileCard({
     const handleDoubleClick = (e: React.MouseEvent) => {
         e.stopPropagation();
         onPlay();
+    };
+
+    // Drag handlers
+    const handleDragStart = (e: React.DragEvent) => {
+        e.dataTransfer.setData('application/json', JSON.stringify({ type: 'file', id: file.id }));
+        e.dataTransfer.effectAllowed = 'move';
+        onDragStart?.(file);
     };
 
     // Generate authenticated stream URL for thumbnail
@@ -79,6 +88,8 @@ export default function FileCard({
                 onClick={handleClick}
                 onContextMenu={handleContextMenu}
                 onDoubleClick={handleDoubleClick}
+                draggable
+                onDragStart={handleDragStart}
                 data-file-id={file.id}
             >
                 <div className="w-12 h-12 rounded-lg bg-dark-800/80 flex items-center justify-center overflow-hidden shrink-0 border border-white/[0.05]">
@@ -146,6 +157,8 @@ export default function FileCard({
             onClick={handleClick}
             onContextMenu={handleContextMenu}
             onDoubleClick={handleDoubleClick}
+            draggable
+            onDragStart={handleDragStart}
             data-file-id={file.id}
         >
             <div className={`aspect-video rounded-lg mb-3 overflow-hidden relative border ${selected ? 'border-primary-500/20' : 'border-white/[0.05]'} bg-dark-900/50`}>

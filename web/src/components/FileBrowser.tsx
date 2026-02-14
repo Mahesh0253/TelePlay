@@ -109,6 +109,7 @@ export default function FileBrowser() {
     const containerRef = useRef<HTMLDivElement>(null);
     const [isSelecting, setIsSelecting] = useState(false);
     const [isSidebarOpen, setSidebarOpen] = useState(true);
+    const [isDragging, setIsDragging] = useState(false);
     const selectionStart = useRef({ x: 0, y: 0 });
 
     // handle refresh
@@ -126,7 +127,14 @@ export default function FileBrowser() {
     // Handle drag-drop file to folder
     const handleFileDrop = useCallback(async (fileId: number, folderId: number) => {
         await updateFileMutation.mutateAsync({ id: fileId, folder_id: folderId });
-    }, [updateFileMutation]);
+        addToast('File moved successfully', 'success');
+    }, [updateFileMutation, addToast]);
+
+    // Handle drag start
+    const handleDragStart = useCallback((file: TelegramFile) => {
+        setIsDragging(true);
+        console.log('Dragging file:', file.file_name);
+    }, [setIsDragging]);
 
     // Handle file rename
     const handleRenameFile = useCallback(async (newName: string) => {
@@ -613,7 +621,7 @@ export default function FileBrowser() {
                 </header>
 
                 {/* Content Area */}
-                <div 
+                <div
                     ref={containerRef}
                     className="flex-1 overflow-auto p-6 relative outline-none"
                     onMouseDown={handleMouseDown}
@@ -623,6 +631,8 @@ export default function FileBrowser() {
                     tabIndex={0}
                     // Prevent default drag behaviors on container
                     onDragOver={(e) => e.preventDefault()}
+                    onDragEnd={() => setIsDragging(false)}
+                    onDragLeave={() => setIsDragging(false)}
                 >
                     {isLoading && !displayFiles ? (
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 animate-fade-in">
@@ -635,9 +645,17 @@ export default function FileBrowser() {
                              {/* Unified View */}
                              {(showFolders && folders?.length ? folders.length : 0) + (displayFiles?.length || 0) > 0 ? (
                                 <div className={viewMode === 'grid'
-                                    ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 pb-20'
-                                    : 'flex flex-col gap-2 pb-20'
+                                    ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 pb-20 relative'
+                                    : 'flex flex-col gap-2 pb-20 relative'
                                 }>
+                                    {/* Drag overlay */}
+                                    {isDragging && (
+                                        <div className="absolute inset-0 bg-black/20 backdrop-blur-sm pointer-events-none z-40 flex items-center justify-center">
+                                            <div className="bg-primary-500/20 border border-primary-500/50 rounded-lg px-4 py-2 text-primary-300">
+                                                Drop file on folder to move
+                                            </div>
+                                        </div>
+                                    )}
                                     {/* Folders */}
                                     {showFolders && folders?.map((folder) => (
                                         <FolderCard
@@ -660,6 +678,7 @@ export default function FileBrowser() {
                                             selected={selectedFileIds.has(file.id)}
                                             onSelect={(multi) => selectFile(file.id, multi)}
                                             onPlay={() => handleFileOpen(file)}
+                                            onDragStart={handleDragStart}
                                         />
                                     ))}
                                 </div>
