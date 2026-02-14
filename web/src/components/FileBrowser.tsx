@@ -126,22 +126,40 @@ export default function FileBrowser() {
 
     // Handle drag-drop file to folder
     const handleFileDrop = useCallback(async (fileId: number, folderId: number) => {
+        console.log('Moving single file:', fileId, 'to folder:', folderId);
         await updateFileMutation.mutateAsync({ id: fileId, folder_id: folderId });
         addToast('File moved successfully', 'success');
-        // Refresh the current view to show updated file locations
-        handleRefresh();
-    }, [updateFileMutation, addToast, handleRefresh]);
+        // Force a complete refresh by resetting the file list
+        setPage(1);
+        setAllFiles([]);
+        // Always refresh files and folders when in files section
+        if (activeSection === 'files') {
+            refetchFiles();
+            refetchFolders();
+        }
+        // Clear selection after move
+        clearSelection();
+    }, [updateFileMutation, addToast, activeSection, refetchFiles, refetchFolders, setPage, setAllFiles, clearSelection]);
 
     // Handle multiple file drops
     const handleMultipleFileDrop = useCallback(async (fileIds: number[], folderId: number) => {
+        console.log('Moving multiple files:', fileIds, 'to folder:', folderId);
         const promises = fileIds.map(fileId =>
             updateFileMutation.mutateAsync({ id: fileId, folder_id: folderId })
         );
         await Promise.all(promises);
         addToast(`${fileIds.length} files moved successfully`, 'success');
-        // Refresh the current view to show updated file locations
-        handleRefresh();
-    }, [updateFileMutation, addToast, handleRefresh]);
+        // Force a complete refresh by resetting the file list
+        setPage(1);
+        setAllFiles([]);
+        // Always refresh files and folders when in files section
+        if (activeSection === 'files') {
+            refetchFiles();
+            refetchFolders();
+        }
+        // Clear selection after move
+        clearSelection();
+    }, [updateFileMutation, addToast, activeSection, refetchFiles, refetchFolders, setPage, setAllFiles, clearSelection]);
 
     // Handle drag start
     const handleDragStart = useCallback((file: TelegramFile, e?: React.DragEvent) => {
@@ -150,14 +168,23 @@ export default function FileBrowser() {
         if (e) {
             // If this file is selected and there are other selected files, drag all selected files
             if (selectedFileIds.has(file.id) && selectedFileIds.size > 1) {
-                const selectedFiles = displayFiles?.filter(f => selectedFileIds.has(f.id)) || [];
+                // Use a more reliable way to get selected files
+                const selectedFiles = [];
+                for (const fileId of selectedFileIds) {
+                    const foundFile = displayFiles?.find(f => f.id === fileId);
+                    if (foundFile) {
+                        selectedFiles.push(foundFile);
+                    }
+                }
                 const data = {
                     type: 'multiple_files',
                     files: selectedFiles.map(f => ({ id: f.id, name: f.file_name }))
                 };
+                console.log('Dragging multiple files:', selectedFiles.length, 'selectedFileIds size:', selectedFileIds.size);
                 e.dataTransfer.setData('application/json', JSON.stringify(data));
             } else {
                 // Single file drag
+                console.log('Dragging single file:', file.file_name);
                 e.dataTransfer.setData('application/json', JSON.stringify({ type: 'file', id: file.id }));
             }
         }

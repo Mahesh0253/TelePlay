@@ -62,11 +62,16 @@ export default function FolderCard({ folder, viewMode, selected, onSelect, onOpe
 
         try {
             const data = JSON.parse(e.dataTransfer.getData('application/json'));
+            console.log('Drop data received:', data);
+            console.log('Dropping on folder:', folder.name);
+            
             if (data.type === 'file' && data.id) {
+                console.log('Single file drop:', data.id);
                 onFileDrop(data.id, folder.id);
             } else if (data.type === 'multiple_files' && data.files && data.files.length > 0) {
                 // Handle multiple file drop
                 const fileIds = data.files.map((file: any) => file.id);
+                console.log('Multiple files drop:', fileIds);
                 onMultipleFileDrop?.(fileIds, folder.id);
             }
         } catch (err) {

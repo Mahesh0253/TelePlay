@@ -50,6 +50,7 @@ export default function FileCard({
     const handleDragStart = (e: React.DragEvent) => {
         e.dataTransfer.setData('application/json', JSON.stringify({ type: 'file', id: file.id }));
         e.dataTransfer.effectAllowed = 'move';
+        console.log('Drag started for file:', file.file_name);
         onDragStart?.(file, e);
     };
 
