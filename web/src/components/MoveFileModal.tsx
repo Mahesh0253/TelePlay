@@ -9,9 +9,10 @@ import { useAppStore } from '../lib/store';
 interface MoveFileModalProps {
     items: { files: TelegramFile[]; folders: Folder[] };
     onClose: () => void;
+    onSuccess?: () => void;
 }
 
-export default function MoveFileModal({ items, onClose }: MoveFileModalProps) {
+export default function MoveFileModal({ items, onClose, onSuccess }: MoveFileModalProps) {
     const [selectedId, setSelectedId] = useState<number | null>(null);
     const { data: folderTree, isLoading } = useFolderTree();
     const { mutateAsync: moveFiles, isPending: isFilesPending } = useMoveFiles();
@@ -40,6 +41,7 @@ export default function MoveFileModal({ items, onClose }: MoveFileModalProps) {
             await Promise.all(promises);
             addToast(`Moved ${totalItems} item(s) successfully`);
             clearSelection();
+            onSuccess?.();
             onClose();
         } catch (error) {
             addToast('Failed to move items', 'error');

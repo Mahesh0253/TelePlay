@@ -319,13 +319,18 @@ export default function FileBrowser() {
                     });
                 }
                 setClipboard(null);
+                // Refresh data after move
+                handleRefresh();
+                addToast('Items moved successfully', 'success');
+                clearSelection();
             } else if (clipboard.mode === 'copy') {
                 alert("Copying files is not yet supported. Only Move (Cut) is supported.");
             }
         } catch (error) {
             console.error('Paste failed:', error);
+            addToast('Failed to move items', 'error');
         }
-    }, [clipboard, currentFolderId, moveFilesMutation, moveFoldersMutation, setClipboard]);
+    }, [clipboard, currentFolderId, moveFilesMutation, moveFoldersMutation, setClipboard, handleRefresh, addToast, clearSelection]);
 
 
     // Selection Box Logic
@@ -498,7 +503,7 @@ export default function FileBrowser() {
             }
 
             // Arrow keys with Shift - range selection
-            if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+            if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
                 e.preventDefault();
                 if (!displayFiles || displayFiles.length === 0) return;
 
@@ -511,10 +516,30 @@ export default function FileBrowser() {
                 if (currentIndex === -1) return;
 
                 let newIndex = currentIndex;
+                
                 if (e.key === 'ArrowUp') {
                     newIndex = Math.max(0, currentIndex - 1);
                 } else if (e.key === 'ArrowDown') {
                     newIndex = Math.min(displayFiles.length - 1, currentIndex + 1);
+                } else if (viewMode === 'grid') {
+                    // Grid navigation - calculate horizontal movement
+                    const cols = viewMode === 'grid' ?
+                        (window.innerWidth >= 1280 ? 6 : // xl: 6 columns
+                         window.innerWidth >= 1024 ? 5 : // lg: 5 columns
+                         window.innerWidth >= 768 ? 4 : // md: 4 columns
+                         2) : // sm: 2 columns
+                        1; // List view: 1 column
+                    
+                    const currentRow = Math.floor(currentIndex / cols);
+                    const currentCol = currentIndex % cols;
+                    
+                    if (e.key === 'ArrowLeft') {
+                        const newCol = Math.max(0, currentCol - 1);
+                        newIndex = currentRow * cols + newCol;
+                    } else if (e.key === 'ArrowRight') {
+                        const newCol = Math.min(cols - 1, currentCol + 1);
+                        newIndex = currentRow * cols + newCol;
+                    }
                 }
 
                 const newFileId = displayFiles[newIndex].id;
@@ -865,7 +890,12 @@ export default function FileBrowser() {
                 {moveItems && (
                     <MoveFileModal
                         items={moveItems}
-                        onClose={() => setMoveItems(null)}
+                        onSuccess={handleRefresh}
+                        onClose={() => {
+                            setMoveItems(null);
+                            handleRefresh();
+                            clearSelection();
+                        }}
                     />
                 )}
 
