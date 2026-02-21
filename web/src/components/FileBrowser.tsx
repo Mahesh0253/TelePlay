@@ -53,8 +53,15 @@ export default function FileBrowser() {
         setSelectedFiles
     } = useAppStore();
 
+    const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(searchQuery);
+
+    useEffect(() => {
+        const timer = setTimeout(() => setDebouncedSearchQuery(searchQuery), 250);
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
+
     // Data Fetching
-    const { data: filesList, isLoading: filesLoading, refetch: refetchFiles } = useFiles(currentFolderId, fileTypeFilter || undefined, searchQuery || undefined);
+    const { data: filesList, isLoading: filesLoading, refetch: refetchFiles } = useFiles(currentFolderId, fileTypeFilter || undefined, debouncedSearchQuery || undefined);
     const { data: recentFiles, isLoading: recentLoading, refetch: refetchRecent } = useRecentFiles(50);
     const { data: cwFiles, isLoading: cwLoading, refetch: refetchCW } = useContinueWatching(50);
     
@@ -79,6 +86,17 @@ export default function FileBrowser() {
 
     // Combined loading state
     isLoading = isLoading || (activeSection === 'files' && foldersLoading);
+
+
+    const visibleFolderCount = showFolders ? (folders?.length || 0) : 0;
+    const visibleFileCount = displayFiles?.length || 0;
+    const selectedCount = selectedFileIds.size + selectedFolderIds.size;
+    const hasActiveFilters = !!searchQuery || !!fileTypeFilter;
+    const sectionTitle = activeSection === 'recent'
+        ? 'Recent files'
+        : activeSection === 'continue_watching'
+            ? 'Continue watching'
+            : 'My files';
     
     // Mutations
     const deleteFilesMutation = useDeleteFiles();
@@ -441,7 +459,7 @@ export default function FileBrowser() {
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-500" />
                             <input
                                 type="text"
-                                placeholder="Search..."
+                                placeholder="Search files and folders..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 className="w-full bg-dark-800/50 border border-white/[0.06] rounded-lg pl-9 pr-3 py-1.5 text-sm text-white focus:outline-none focus:border-primary-500/50 focus:bg-dark-800 transition-all"
@@ -569,6 +587,29 @@ export default function FileBrowser() {
                     </div>
                 </header>
 
+
+                <div className="px-4 sm:px-6 py-3 border-b border-white/[0.04] bg-dark-900/20 flex flex-wrap items-center gap-2 text-xs sm:text-sm">
+                    <span className="px-2.5 py-1 rounded-full bg-white/[0.04] text-dark-300">{sectionTitle}</span>
+                    <span className="px-2.5 py-1 rounded-full bg-white/[0.04] text-dark-300">{visibleFolderCount} folders</span>
+                    <span className="px-2.5 py-1 rounded-full bg-white/[0.04] text-dark-300">{visibleFileCount} files</span>
+                    {selectedCount > 0 && (
+                        <span className="px-2.5 py-1 rounded-full bg-primary-500/20 text-primary-200 border border-primary-500/30">
+                            {selectedCount} selected
+                        </span>
+                    )}
+                    {hasActiveFilters && (
+                        <button
+                            onClick={() => {
+                                setSearchQuery('');
+                                setFileTypeFilter(null);
+                            }}
+                            className="px-2.5 py-1 rounded-full border border-white/[0.12] text-dark-300 hover:text-white hover:border-white/[0.2] transition-colors"
+                        >
+                            Clear filters
+                        </button>
+                    )}
+                </div>
+
                 {/* Content Area */}
                 <div 
                     ref={containerRef}
@@ -625,10 +666,25 @@ export default function FileBrowser() {
                                     <div className="w-24 h-24 rounded-3xl bg-dark-800/50 flex items-center justify-center border border-white/[0.04] mb-6 shadow-2xl">
                                         <ArrowUp className="w-10 h-10 text-dark-600 animate-bounce" />
                                     </div>
-                                    <h3 className="text-xl font-bold text-white mb-2">No files found</h3>
-                                    <p className="text-dark-400 max-w-xs">
-                                        Upload files by sending them to the Telegram bot
+                                    <h3 className="text-xl font-bold text-white mb-2">
+                                        {hasActiveFilters ? 'No matches found' : 'Nothing here yet'}
+                                    </h3>
+                                    <p className="text-dark-400 max-w-sm">
+                                        {hasActiveFilters
+                                            ? 'Try clearing search and filters to see more files and folders.'
+                                            : 'Upload files by sending them to the Telegram bot, then return here to organize them.'}
                                     </p>
+                                    {hasActiveFilters && (
+                                        <button
+                                            onClick={() => {
+                                                setSearchQuery('');
+                                                setFileTypeFilter(null);
+                                            }}
+                                            className="mt-5 btn-secondary px-4 py-2"
+                                        >
+                                            Reset filters
+                                        </button>
+                                    )}
                                 </div>
                             )}
 

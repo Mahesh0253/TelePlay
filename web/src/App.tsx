@@ -1,9 +1,15 @@
 import { Routes, Route, Navigate, useSearchParams, useNavigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useCurrentUser, useLoginWithCode, useBotInfo, useGenerateLoginCode, useVerifyLoginCode } from './lib/api';
 import FileBrowser from './components/FileBrowser';
 import GlobalContextMenu from './components/GlobalContextMenu';
 import logo from './assets/logo.png';
+
+function getApiErrorMessage(err: unknown, fallback: string) {
+    const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+    return typeof detail === 'string' ? detail : fallback;
+}
+
 
 function AuthCallback() {
     const [searchParams] = useSearchParams();
@@ -15,8 +21,8 @@ function AuthCallback() {
     useEffect(() => {
         if (token) {
             try {
-                console.log('Token received:', token.substring(0, 20) + '...');
                 localStorage.setItem('access_token', token);
+                localStorage.removeItem('refresh_token');
                 const check = localStorage.getItem('access_token');
                 if (check === token) {
                     setStatus('✅ Token saved! Redirecting...');
@@ -79,11 +85,6 @@ function AuthCallback() {
     );
 }
 
-// Add Key icon to imports if not already imported (it's not, need to check imports)
-// Wait, I can't easily add imports here without multiple replace.
-// I'll stick to simple UI for now or check imports first.
-// App.tsx imports: Routes, Route, Navigate, useSearchParams, useNavigate (react-router-dom); useEffect, useState (react); useCurrentUser (./lib/api); FileBrowser
-// It does NOT import lucide-react icons. I'll use text or existing SVG.
 
 function LoginPage() {
     const { mutate: loginByCode, isPending: isVerifying } = useLoginWithCode();
@@ -93,34 +94,46 @@ function LoginPage() {
     const [code, setCode] = useState('');
     const [isPolling, setIsPolling] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const loginCommand = useMemo(() => `/login ${code || 'CODE'}`, [code]);
 
-    // Initial code generation
-    useEffect(() => {
+    const requestNewCode = useCallback(() => {
+        setError(null);
         generateCode(undefined, {
             onSuccess: (data) => {
                 setCode(data.code);
                 setIsPolling(true);
             },
-            onError: (err: any) => {
-                setError(err.response?.data?.detail || "Failed to generate code");
+            onError: (err: unknown) => {
+                setError(getApiErrorMessage(err, "Failed to generate code"));
             }
         });
     }, [generateCode]);
 
+    // Initial code generation
+    useEffect(() => {
+        requestNewCode();
+    }, [requestNewCode]);
+
     // Polling logic
     useEffect(() => {
-        let timer: any;
-        if (isPolling && code) {
+        let timer: ReturnType<typeof setInterval> | null = null;
+        if (isPolling && code.length === 6) {
             timer = setInterval(() => {
                 verifyCode(code, {
                     onSuccess: (data) => {
+                        setError(null);
                         localStorage.setItem('access_token', data.access_token);
                         localStorage.setItem('refresh_token', data.refresh_token);
                         setIsPolling(false);
                         window.location.href = '/';
                     },
-                    onError: () => {
-                        // Silent failure for polling
+                    onError: (err: unknown) => {
+                        const detail = getApiErrorMessage(err, "");
+                        if (detail.toLowerCase().includes('expired')) {
+                            setIsPolling(false);
+                            setError('Login code expired. Generating a new code...');
+                            requestNewCode();
+                        }
                     }
                 });
             }, 3000);
@@ -128,20 +141,22 @@ function LoginPage() {
         return () => {
             if (timer) clearInterval(timer);
         };
-    }, [isPolling, code, verifyCode]);
+    }, [isPolling, code, verifyCode, requestNewCode]);
 
     const handleManualLogin = (e: React.FormEvent) => {
         e.preventDefault();
         if (!code) return;
 
-        loginByCode(code, {
+        setError(null);
+        setIsPolling(false);
+        loginByCode(code.trim().toUpperCase(), {
             onSuccess: (data) => {
                 localStorage.setItem('access_token', data.access_token);
                 localStorage.setItem('refresh_token', data.refresh_token);
                 window.location.href = '/';
             },
-            onError: (err: any) => {
-                setError(err.response?.data?.detail || "Invalid code");
+            onError: (err: unknown) => {
+                setError(getApiErrorMessage(err, "Invalid code"));
             }
         });
     };
@@ -181,8 +196,13 @@ function LoginPage() {
                                     type="text"
                                     placeholder="ENTER 6-DIGIT CODE"
                                     value={code}
-                                    onChange={(e) => setCode(e.target.value.toUpperCase())}
+                                    onChange={(e) => setCode(e.target.value.replace(/[^A-Z0-9]/gi, '').toUpperCase())}
                                     maxLength={6}
+                                    inputMode="text"
+                                    aria-label="Login code"
+                                    aria-invalid={!!error}
+                                    aria-describedby={error ? 'login-code-error' : undefined}
+                                    autoComplete="one-time-code"
                                     className="w-full bg-dark-900/60 border border-white/[0.08] rounded-xl px-4 py-4 text-center text-xl tracking-[0.1em] sm:text-2xl sm:tracking-[0.3em] font-mono text-white placeholder:text-sm placeholder:tracking-normal placeholder:font-sans placeholder-dark-600 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 transition-all duration-200 uppercase"
                                 />
                                 {isGenerating && (
@@ -204,21 +224,31 @@ function LoginPage() {
                                 ) : 'Login'}
                             </button>
                             {error && (
-                                <p className="text-red-400 text-sm mt-1">
+                                <p id="login-code-error" role="alert" aria-live="assertive" className="text-red-400 text-sm mt-1">
                                     {error}
                                 </p>
                             )}
                         </form>
                         
                         {isPolling && (
-                            <div className="flex items-center justify-center gap-2 mt-4 text-xs text-dark-400">
+                            <div role="status" aria-live="polite" className="flex items-center justify-center gap-2 mt-4 text-xs text-dark-400">
                                 <div className="w-2 h-2 bg-primary-500 rounded-full animate-pulse"></div>
                                 Waiting for confirmation...
                             </div>
                         )}
+
+                        <button
+                            type="button"
+                            onClick={requestNewCode}
+                            disabled={isGenerating}
+                            aria-label="Generate a new login code"
+                            className="text-xs text-primary-400 hover:text-primary-300 disabled:opacity-50 mt-3"
+                        >
+                            Generate new code
+                        </button>
                         
                         <p className="text-xs text-dark-500 mt-4">
-                            Send <span className="text-primary-400 font-mono bg-dark-800/50 px-1.5 py-0.5 rounded">/login {code || 'CODE'}</span> to the bot to get a code.
+                            Send <span className="text-primary-400 font-mono bg-dark-800/50 px-1.5 py-0.5 rounded">{loginCommand}</span> to the bot to get a code.
                         </p>
                     </div>
 
@@ -260,16 +290,11 @@ function BotLink({ code }: { code?: string }) {
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-    const { data: user, isLoading, error } = useCurrentUser();
+    const { isLoading, error } = useCurrentUser();
     const token = localStorage.getItem('access_token');
 
-    console.log('[ProtectedRoute] Token exists:', !!token);
-    console.log('[ProtectedRoute] isLoading:', isLoading);
-    console.log('[ProtectedRoute] error:', error);
-    console.log('[ProtectedRoute] user:', user);
 
     if (!token) {
-        console.log('[ProtectedRoute] No token, redirecting to login');
         return <Navigate to="/login" replace />;
     }
 
@@ -285,7 +310,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     }
 
     if (error) {
-        console.log('[ProtectedRoute] Auth error, showing error message');
         // Show error instead of immediately redirecting
         return (
             <div className="min-h-screen flex items-center justify-center bg-dark-950 p-4">
